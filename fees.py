@@ -7,8 +7,9 @@ import os
 from pathlib import Path
 from dune_client.types import QueryParameter
 from dune_client.query import QueryBase
+from matplotlib.axes import Axes
 from historical_api import PriceStats, fetch_price_statistics
-from consts import DUNE_API_KEY, ETH_CC_ID, QUERY_ID_FEE_0, QUERY_ID_FEE_1, USD_CC_ID
+from consts import DUNE_API_KEY, ETH_CC_ID, QUERY_ID_FEE_0_ARB, QUERY_ID_FEE_0_ETH, QUERY_ID_FEE_0_OPT, QUERY_ID_FEE_0_POLY, QUERY_ID_FEE_1_ARB, QUERY_ID_FEE_1_ETH, QUERY_ID_FEE_1_OPT, QUERY_ID_FEE_1_POLY, USD_CC_ID, WEB3_ARB_URL, WEB3_ETH_URL, WEB3_OPT_URL, WEB3_POLYGON_URL
 import math
 import matplotlib.pyplot as plt
 
@@ -279,44 +280,72 @@ if __name__ == "__main__":
     for window_period in [
         # timedelta(weeks=1),
         # timedelta(weeks=2),
-        timedelta(weeks=4),
-        # timedelta(weeks=6),
-        # timedelta(weeks=8),
+        # timedelta(weeks=4),
+        timedelta(weeks=6),
+        timedelta(weeks=8),
     ]:
         with open("./data/tokens.cs", "r") as f: 
-            fees_to_liquidity = []
+            fees_to_liquidity: dict[str, list[float]] = dict()
             for line in f.readlines():
                 text_tokens = line.strip().split(" ")
                 if len(text_tokens) == 0 or text_tokens[0] == "//":
                     continue
                 else:
-                    fees_to_liquidity.append([])
                     ticker_0_id = text_tokens[0]
                     ticker_1_id = text_tokens[1]
                     ticker_0_contract_address = text_tokens[2] 
                     ticker_1_contract_address = text_tokens[3] 
                     bips = int(text_tokens[4])
-                    
-                    print(f"Working on {ticker_0_id}/{ticker_1_id} ({bips} bips) pair...")
-                    
-                    decimals_token_0 = fetch_token_decimals(ticker_0_contract_address)
-                    decimals_token_1 = fetch_token_decimals(ticker_1_contract_address)
+                    chain = text_tokens[5]
 
-                    # TODO: parametrize over bips
-                    pool_address = fetch_pool_address(ticker_0_contract_address, ticker_1_contract_address, bips)
+                    print(f"Working on {ticker_0_id}/{ticker_1_id} ({bips} bips, {chain} chain) pair...")
+
+                    fees_to_liquidity[f"{ticker_0_id}_{ticker_1_id}_{bips}_{chain}"] = []
+
+
+                    decimals_token_0 = None
+                    decimals_token_1 = None
+                    pool_address = None
+                    query_fee_0 = None
+                    query_fee_1 = None
+                    #  TODO: strategy pattern
+                    if chain == "ETH":
+                        query_fee_0 = QUERY_ID_FEE_0_ETH
+                        query_fee_1 = QUERY_ID_FEE_1_ETH
+                        pool_address = fetch_pool_address(ticker_0_contract_address, ticker_1_contract_address, bips, WEB3_ETH_URL)
+                        decimals_token_0 = fetch_token_decimals(ticker_0_contract_address, WEB3_ETH_URL)
+                        decimals_token_1 = fetch_token_decimals(ticker_1_contract_address, WEB3_ETH_URL)
+                    elif chain == "ARB":
+                        query_fee_0 = QUERY_ID_FEE_0_ARB
+                        query_fee_1 = QUERY_ID_FEE_1_ARB 
+                        pool_address = fetch_pool_address(ticker_0_contract_address, ticker_1_contract_address, bips, WEB3_ARB_URL)
+                        decimals_token_0 = fetch_token_decimals(ticker_0_contract_address, WEB3_ARB_URL)
+                        decimals_token_1 = fetch_token_decimals(ticker_1_contract_address, WEB3_ARB_URL)
+                    elif chain == "OPT":
+                        query_fee_0 = QUERY_ID_FEE_0_OPT
+                        query_fee_1 = QUERY_ID_FEE_1_OPT 
+                        pool_address = fetch_pool_address(ticker_0_contract_address, ticker_1_contract_address, bips, WEB3_OPT_URL)
+                        decimals_token_0 = fetch_token_decimals(ticker_0_contract_address, WEB3_OPT_URL)
+                        decimals_token_1 = fetch_token_decimals(ticker_1_contract_address, WEB3_OPT_URL)
+                    elif chain == "POLY":
+                        query_fee_0 = QUERY_ID_FEE_0_POLY
+                        query_fee_1 = QUERY_ID_FEE_1_POLY
+                        pool_address = fetch_pool_address(ticker_0_contract_address, ticker_1_contract_address, bips, WEB3_POLYGON_URL)
+                        decimals_token_0 = fetch_token_decimals(ticker_0_contract_address, WEB3_POLYGON_URL)
+                        decimals_token_1 = fetch_token_decimals(ticker_1_contract_address, WEB3_POLYGON_URL)
 
                     try:
                         fee_0_result = fetch_dune_fee_data(
-                            query_id=QUERY_ID_FEE_0,
+                            query_id=query_fee_0,
                             pool_address=pool_address,
-                            filename=f"./data/{ticker_0_id}_{ticker_1_id}_{bips}_univ3/fee0_{ticker_0_id}_{ticker_1_id}_{bips}.txt",
-                            dir_name=f"{ticker_0_id}_{ticker_1_id}_{bips}_univ3"
+                            filename=f"./data/{ticker_0_id}_{ticker_1_id}_{bips}_{chain}_univ3/fee0_{ticker_0_id}_{ticker_1_id}_{bips}_{chain}.txt",
+                            dir_name=f"{ticker_0_id}_{ticker_1_id}_{bips}_{chain}_univ3"
                         )
                         fee_1_result = fetch_dune_fee_data(
-                            query_id=QUERY_ID_FEE_1,
+                            query_id=query_fee_1,
                             pool_address=pool_address,
-                            filename=f"./data/{ticker_0_id}_{ticker_1_id}_{bips}_univ3/fee1_{ticker_0_id}_{ticker_1_id}_{bips}.txt",
-                            dir_name=f"{ticker_0_id}_{ticker_1_id}_{bips}_univ3"
+                            filename=f"./data/{ticker_0_id}_{ticker_1_id}_{bips}_{chain}_univ3/fee1_{ticker_0_id}_{ticker_1_id}_{bips}_{chain}.txt",
+                            dir_name=f"{ticker_0_id}_{ticker_1_id}_{bips}_{chain}_univ3"
                         )
                     except Exception:
                         continue
@@ -366,14 +395,42 @@ if __name__ == "__main__":
                             raise Exception("Scaled fees for token 1 is 0!")
                         # print(f"Total fees earned in USD: {total_fees_earned_usd_equivalent}")
                         print(f"Ratio (fee profits/liquidity): {total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent}")
-
+                        if total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent <= 1: # don't insert outliers; technically possible but they break the graph flow
+                            fees_to_liquidity[f"{ticker_0_id}_{ticker_1_id}_{bips}_{chain}"].append(total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent)
                         print("\\\\\\\\")
+                         # TODO: calculate option price
 
-                # TODO: visualize results
+            # TODO: visualize results
+            fig = plt.figure(figsize =(10, 7))
+            # ax:Axes = fig.add_subplot(1, len(fees_to_liquidity.keys()), (1, len(fees_to_liquidity.keys())))
 
-                # plt.plot()
+            # keys, values = fees_to_liquidity.keys(), fees_to_liquidity.values() 
 
-                    # TODO: calculate option price
-                    # TODO: visualize fees vs option price results
+            # boxplot = ax.boxplot(values)
+            
+            i = 0
+            for key, value in fees_to_liquidity.items():
+                plt.scatter(
+                    x=[i]*len(value), 
+                    y=value,
+                    alpha=0.5,
+                    label=key,
+                    marker='x'
+                )
+                i += 1
+
+            plt.xticks([_ for _ in range(len(fees_to_liquidity))], fees_to_liquidity.keys())
+
+            # ax.set_xticklabels(keys)
+
+            # ax.get_xaxis().tick_bottom()
+            # ax.get_yaxis().tick_left()
+
+            plt.xticks(rotation=45)
+
+            plt.title("Custom plot")
+            plt.show()
+           
+            # TODO: visualize fees vs option price results
 
                     
