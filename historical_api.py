@@ -55,7 +55,6 @@ class PriceStats:
 
 # ETH id = ethereum 
 def fetch_price_statistics(token0_id: str, token1_id: str, window_start: datetime, window_end: datetime):
-
     window_start = window_start.replace(tzinfo=pytz.UTC)
     window_end = window_end.replace(tzinfo=pytz.UTC)
 
