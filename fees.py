@@ -310,9 +310,7 @@ if __name__ == "__main__":
     fees_to_liquidity: dict[timedelta, dict[str, list[float]]] = dict()
     fees_to_option_price: dict[timedelta, dict[str, list[float]]] = dict()
     for window_period in [
-        # timedelta(weeks=1),
-        # timedelta(weeks=2),
-        timedelta(weeks=4),
+        # timedelta(weeks=4),
         timedelta(weeks=6),
         timedelta(weeks=8),
     ]:
@@ -493,7 +491,9 @@ if __name__ == "__main__":
     for window_period, entries in fees_to_option_price.items():
         print(window_period)
         visualize_token_groups(fees_to_option_price[window_period], time_window=window_period)
-    
+        for key in fees_to_option_price[window_period].keys():
+            print(key)
+            print([float(x) for x in fees_to_option_price[window_period][key]])
     
 
                     
