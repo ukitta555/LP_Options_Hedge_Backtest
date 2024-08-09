@@ -1,22 +1,63 @@
+from collections import deque
 from datetime import datetime, timedelta
 from pprint import pprint
-from dateutil import rrule
+import sys
+from matplotlib import pyplot as plt
+import pandas as pd
 from dune_client.client import DuneClient
-import calendar
-import os
 from pathlib import Path
 from dune_client.types import QueryParameter
 from dune_client.query import QueryBase
-from matplotlib.axes import Axes
+import numpy as np
+import pytz
 from historical_api import PriceStats, fetch_price_statistics
-from consts import DUNE_API_KEY, ETH_CC_ID, QUERY_ID_FEE_0_ARB, QUERY_ID_FEE_0_ETH, QUERY_ID_FEE_0_OPT, QUERY_ID_FEE_0_POLY, QUERY_ID_FEE_1_ARB, QUERY_ID_FEE_1_ETH, QUERY_ID_FEE_1_OPT, QUERY_ID_FEE_1_POLY, USD_CC_ID, WEB3_ARB_URL, WEB3_ETH_URL, WEB3_OPT_URL, WEB3_POLYGON_URL
+from consts import DUNE_API_KEY, QUERY_ID_FEE_0_ARB, QUERY_ID_FEE_0_ETH, QUERY_ID_FEE_0_OPT, QUERY_ID_FEE_0_POLY, QUERY_ID_FEE_1_ARB, QUERY_ID_FEE_1_ETH, QUERY_ID_FEE_1_OPT, QUERY_ID_FEE_1_POLY, WEB3_ARB_URL, WEB3_ETH_URL, WEB3_OPT_URL, WEB3_POLYGON_URL
 import math
-import matplotlib.pyplot as plt
 
-from utils import format_cached_dune_response, format_dune_fee_query
+from utils import fetch_hourly_logarithmic_ratios, format_cached_dune_response, format_dune_fee_query, read_from_file, visualize_token_groups
 from web3_api import fetch_pool_address, fetch_token_decimals
 
 dune = DuneClient(DUNE_API_KEY)
+
+# calculate the closest realized volatility for the liquidity_provision_time 
+def calculate_realized_volatility(liquidity_provision_time: datetime, log_of_ratios: pd.DataFrame):
+    # bruteforced "optimal" hyperparameters 
+    days_left_side = 22
+    days_right_side = 21
+    
+    buffer_size = max(days_left_side, days_right_side) * 24
+    
+    if liquidity_provision_time < log_of_ratios.loc[buffer_size, "datetime"] or log_of_ratios.loc[len(log_of_ratios) - buffer_size - 1, "datetime"] < liquidity_provision_time:
+        raise Exception("Can't calculate for this liquidity provision time due to using historical/future data, skipping window..")
+    else:
+        window = deque(maxlen=(days_left_side+days_right_side) * 24)
+        counter = 0
+
+        earliest_usable_time = log_of_ratios.loc[buffer_size, "datetime"]
+        liquidity_provision_time_trimmed: datetime = liquidity_provision_time.replace(minute=0, second=0, tzinfo=pytz.UTC)
+        
+        # print(f"Liquidity provided at: {liquidity_provision_time_trimmed}, earliest time to calculate volatility: {earliest_usable_time}")
+        # hour_difference = int((liquidity_provision_time_trimmed - earliest_usable_time).total_seconds() // 3600)
+        # assert((liquidity_provision_time_trimmed - earliest_usable_time).total_seconds() % 3600 == 0)
+
+        # closest_hour_entry = buffer_size + hour_difference 
+        # print(f"Hour difference for volatility: {hour_difference}, index of the entry used for calculating the volatility {closest_hour_entry}, entry itself: \n {log_of_ratios.loc[closest_hour_entry]}")
+
+        i = 0
+        while log_of_ratios.loc[buffer_size + i, "datetime"] < liquidity_provision_time_trimmed:
+            i += 1
+        closest_hour_entry = buffer_size + i
+        # print(f"Index of the entry used for calculating the volatility {closest_hour_entry}, entry itself: \n {log_of_ratios.loc[closest_hour_entry]}")
+
+
+        # pre-fill
+        for idx in range(closest_hour_entry - days_left_side * 24, closest_hour_entry + days_right_side * 24):
+            counter += 1
+            window.append(log_of_ratios.loc[idx, "log"])
+    
+        assert(counter == (days_left_side+days_right_side) * 24)
+        realized_volatility = np.std(window) * math.sqrt(24) * math.sqrt(365)
+        return realized_volatility
 
 # (token0 - token1)
 # USDC - WETH 
@@ -37,7 +78,8 @@ def calculate_required_liquidity_usd(
     P_1 = token1_price_usd
     P = uniswap_price
 
-    print(f"L: {L}, P_l: {P_l}, P_h: {P_h}, P_0: {P_0}, P_1: {P_1}, P:{P}, dec_token_0: {decimals_token0}, dec_token_1: {decimals_token1}")
+    # print(f"L: {L}, P_l: {P_l}, P_h: {P_h}, P_0: {P_0}, P_1: {P_1}, P:{P}, dec_token_0: {decimals_token0}, dec_token_1: {decimals_token1}")
+    # print(f"P_0: {P_0}, P_1: {P_1}, dec_token_0: {decimals_token0}, dec_token_1: {decimals_token1}")
     # print(type(L), type(P))
 
     total_usd_token0 = (((L * (2 ** 96)) / P - (L * (2 ** 96)) / P_h) * P_0) / ((10 ** decimals_token0)) 
@@ -186,19 +228,7 @@ def calculate_stats(
     stopping_time = min(latest_fee_0_date, latest_fee_1_date) # not perfect, but good enough
 
 
-    # print(f"Earliest timestamp fee_0: {earliest_fee_0_date}")
-    # print(f"Latest timestamp fee_0: {latest_fee_0_date}")
-    # print("----------------------------")
-    # print(f"Earliest timestamp fee_1: {earliest_fee_1_date}")
-    # print(f"Latest timestamp fee_1: {latest_fee_1_date}")
-    # print("----------------------------")
-    # print(f"Starting point: {earliest_fee_datapoint_overall}")
-   
-    closest_fee_0_entry_to_beginning_of_window = None
-    closest_fee_0_entry_to_end_of_window = None
-    closest_fee_1_entry_to_beginning_of_window = None
-    closest_fee_1_entry_to_end_of_window = None
-
+    # print(f"Earliest timestamp fee_0: {earliest_fee_good
     price_window_start = earliest_fee_datapoint_overall
     price_window_end = None
     
@@ -271,21 +301,24 @@ def calculate_stats(
         price_window_start = price_window_end
 
         
-    print("-------------------------------")
+    # print("-------------------------------")
     return result
 
 
 
 if __name__ == "__main__":
+    fees_to_liquidity: dict[timedelta, dict[str, list[float]]] = dict()
+    fees_to_option_price: dict[timedelta, dict[str, list[float]]] = dict()
     for window_period in [
         # timedelta(weeks=1),
         # timedelta(weeks=2),
-        # timedelta(weeks=4),
+        timedelta(weeks=4),
         timedelta(weeks=6),
         timedelta(weeks=8),
     ]:
         with open("./data/tokens.cs", "r") as f: 
-            fees_to_liquidity: dict[str, list[float]] = dict()
+            fees_to_liquidity[window_period] = dict()
+            fees_to_option_price[window_period] = dict()
             for line in f.readlines():
                 text_tokens = line.strip().split(" ")
                 if len(text_tokens) == 0 or text_tokens[0] == "//":
@@ -300,7 +333,8 @@ if __name__ == "__main__":
 
                     print(f"Working on {ticker_0_id}/{ticker_1_id} ({bips} bips, {chain} chain) pair...")
 
-                    fees_to_liquidity[f"{ticker_0_id}_{ticker_1_id}_{bips}_{chain}"] = []
+                    fees_to_liquidity[window_period][f"{ticker_0_id}_{ticker_1_id}_{bips/10000}%_{chain}"] = []
+                    fees_to_option_price[window_period][f"{ticker_0_id}_{ticker_1_id}_{bips/10000}%_{chain}"] = []
 
 
                     decimals_token_0 = None
@@ -350,9 +384,6 @@ if __name__ == "__main__":
                     except Exception:
                         continue
 
-
-                    
-                    # TODO: fix price fetching (need to fetch for two tokens instead of one since both of them might not be USD)
                     statistics: list[PriceStats] = calculate_stats(
                         fee_0_result, 
                         fee_1_result,
@@ -361,12 +392,13 @@ if __name__ == "__main__":
                         window_period=window_period
                     )
 
-                    # TODO: change code so that we can have different window sizes (weekly, biweekly, monthly)
-                    # for each month, calculate how much liquidity (in USD) we should put as an LP
-                    print ("required liquidity:")
+                    print ("Required liquidity:")
                     for entry in statistics:
-                        print("\\\\\\\\")
-                        print(entry.t0_to_t1_price_window_start, entry.t0_to_t1_min_price, entry.t0_to_t1_max_price)
+                        print((
+                            f"Window start price:{entry.t0_to_t1_price_window_start} \n" 
+                            f"Window min price: {entry.t0_to_t1_min_price} \n" 
+                            f"Windows max price: {entry.t0_to_t1_max_price}"
+                        ))
                         liquidity_needed_in_usd_equivalent = calculate_required_liquidity_usd(
                             token0_price_usd=entry.spot_price_window_start_token_0,
                             token1_price_usd=entry.spot_price_window_start_token_1,
@@ -386,51 +418,82 @@ if __name__ == "__main__":
                         # print(f"Fees per unit of liquidity token1: {fees_1_scaled}")
                         
                         total_fees_earned_usd_equivalent = \
-                            fees_0_scaled * entry.spot_price_window_start_token_0 + \
-                            fees_1_scaled * entry.spot_price_window_start_token_1
+                            fees_0_scaled * entry.spot_price_window_end_token_0 + \
+                            fees_1_scaled * entry.spot_price_window_end_token_1
                         
                         if fees_1_scaled > 0:
                             print(f"Fee ratio: {fees_0_scaled / fees_1_scaled}")
                         else:
                             raise Exception("Scaled fees for token 1 is 0!")
-                        # print(f"Total fees earned in USD: {total_fees_earned_usd_equivalent}")
+                        print(f"Total fees earned in USD: {total_fees_earned_usd_equivalent}")
                         print(f"Ratio (fee profits/liquidity): {total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent}")
                         if total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent <= 1: # don't insert outliers; technically possible but they break the graph flow
-                            fees_to_liquidity[f"{ticker_0_id}_{ticker_1_id}_{bips}_{chain}"].append(total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent)
-                        print("\\\\\\\\")
-                         # TODO: calculate option price
+                            fees_to_liquidity[window_period][f"{ticker_0_id}_{ticker_1_id}_{bips/10000}%_{chain}"].append(total_fees_earned_usd_equivalent / liquidity_needed_in_usd_equivalent)
 
-            # TODO: visualize results
-            fig = plt.figure(figsize =(10, 7))
-            # ax:Axes = fig.add_subplot(1, len(fees_to_liquidity.keys()), (1, len(fees_to_liquidity.keys())))
 
-            # keys, values = fees_to_liquidity.keys(), fees_to_liquidity.values() 
+                        fetch_hourly_logarithmic_ratios(
+                            base_token=ticker_0_id,
+                            quote_token=ticker_1_id,
+                            offset=timedelta(days=0), 
+                            length_of_dataset=27000,
+                            bips=bips,
+                            chain=chain
+                        )
+                        log_of_ratios = read_from_file(
+                            base_token=ticker_0_id,
+                            quote_token=ticker_1_id,
+                            bips=bips,
+                            chain=chain
+                        )                      
+                        # pprint(log_of_ratios)
+                        try:
+                            realized_volatility = calculate_realized_volatility(
+                                liquidity_provision_time=entry.window_start, 
+                                log_of_ratios=log_of_ratios
+                            )
+                        except Exception as e:
+                            print(e)
+                            continue
 
-            # boxplot = ax.boxplot(values)
-            
-            i = 0
-            for key, value in fees_to_liquidity.items():
-                plt.scatter(
-                    x=[i]*len(value), 
-                    y=value,
-                    alpha=0.5,
-                    label=key,
-                    marker='x'
-                )
-                i += 1
+                        print("Realized volatility:", realized_volatility)
 
-            plt.xticks([_ for _ in range(len(fees_to_liquidity))], fees_to_liquidity.keys())
+                        # realized volatility vs implied volatility has max error of 30%; assume worst case for option price 
+                        error_margin = 1.3  
 
-            # ax.set_xticklabels(keys)
+                        option_price_usd = 0.4 * \
+                                entry.spot_price_window_start_token_0 * \
+                                    (((2 ** 96) / convert_real_price_to_uniswap_price(entry.t0_to_t1_min_price, decimals_token_1 - decimals_token_0)) - \
+                                        ((2 ** 96) / convert_real_price_to_uniswap_price(entry.t0_to_t1_max_price, decimals_token_1 - decimals_token_0))) * \
+                                            math.sqrt((entry.window_end - entry.window_start) / timedelta(days=365)) * \
+                                                realized_volatility * error_margin / \
+                                                    (10 ** decimals_token_0)
+                        
+                        #((2 ** 96) / convert_real_price_to_uniswap_price(entry.t0_to_t1_min_price, decimals_token_1 - decimals_token_0)) = 1 / P_l
+                        # ((2 ** 96) / convert_real_price_to_uniswap_price(entry.t0_to_t1_max_price, decimals_token_1 - decimals_token_0)) = 1 / P_h
+                        
 
-            # ax.get_xaxis().tick_bottom()
-            # ax.get_yaxis().tick_left()
+                        option_price_usd_1_token = 0.4 * \
+                            realized_volatility * \
+                                entry.spot_price_window_start_token_0 * \
+                                    math.sqrt((entry.window_end - entry.window_start) / timedelta(days=365))
 
-            plt.xticks(rotation=45)
+                        print(f"Option price in USD for 1 liquidity: {option_price_usd}")
+                        print(f"Option price in USD for 1 token: {option_price_usd_1_token}")
+                        fees_to_option_ratio = total_fees_earned_usd_equivalent / option_price_usd 
+                        if fees_to_option_ratio <= 7:
+                            fees_to_option_price[window_period][f"{ticker_0_id}_{ticker_1_id}_{bips/10000}%_{chain}"].append(fees_to_option_ratio)
+                        print(f"Fees to option ratio: {fees_to_option_ratio}")
+                        print("-------------------------------")
 
-            plt.title("Custom plot")
-            plt.show()
-           
-            # TODO: visualize fees vs option price results
+            # visualize_token_groups(fees_to_option_price[window_period])
+
+    # for window_period, entries in fees_to_liquidity.items(): 
+    #     visualize_token_groups(fees_to_liquidity[window_period])
+    
+    for window_period, entries in fees_to_option_price.items():
+        print(window_period)
+        visualize_token_groups(fees_to_option_price[window_period], time_window=window_period)
+    
+    
 
                     

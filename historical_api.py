@@ -14,10 +14,13 @@ class PriceStats:
     t0_to_t1_price_window_start: float
     spot_price_window_start_token_0: float
     spot_price_window_start_token_1: float
+    spot_price_window_end_token_0: float
+    spot_price_window_end_token_1: float
     fee_0_diff_window: float | None
     fee_1_diff_window: float | None
     window_start: datetime
     window_end: datetime
+    
 
     def __init__(
         self, 
@@ -26,6 +29,8 @@ class PriceStats:
         t0_to_t1_price_window_start, 
         spot_price_window_start_token_0, 
         spot_price_window_start_token_1, 
+        spot_price_window_end_token_0,
+        spot_price_window_end_token_1,
         window_start, 
         window_end
     ):
@@ -34,6 +39,8 @@ class PriceStats:
         self.t0_to_t1_price_window_start = t0_to_t1_price_window_start
         self.spot_price_window_start_token_0 = spot_price_window_start_token_0
         self.spot_price_window_start_token_1 = spot_price_window_start_token_1
+        self.spot_price_window_end_token_0 = spot_price_window_end_token_0
+        self.spot_price_window_end_token_1 = spot_price_window_end_token_1
         self.fee_0_diff_window = None
         self.fee_1_diff_window = None
         self.window_start = window_start
@@ -53,7 +60,7 @@ class PriceStats:
     #         f"-------------------------------------"
     #     )
 
-# ETH id = ethereum 
+# TODO: fetch price more precisely using hourly API? 
 def fetch_price_statistics(token0_id: str, token1_id: str, window_start: datetime, window_end: datetime):
     window_start = window_start.replace(tzinfo=pytz.UTC)
     window_end = window_end.replace(tzinfo=pytz.UTC)
@@ -98,19 +105,24 @@ def fetch_price_statistics(token0_id: str, token1_id: str, window_start: datetim
 
     response = requests.get(url_token_0_in_USD, headers=headers)
     deserialized = json.loads(response.text)
-    spot_price_token_0_in_USD = list(map(lambda x: x["open"], deserialized["Data"]["Data"]))[0]
+    spot_price_token_0_in_USD = list(map(lambda x: x["open"], deserialized["Data"]["Data"]))
+    spot_price_token_0_in_USD_start, spot_price_token_0_in_USD_end  = spot_price_token_0_in_USD[0], spot_price_token_0_in_USD[-1]
+
  
     response = requests.get(url_token_1_in_USD, headers=headers)
     deserialized = json.loads(response.text)
-    spot_price_token_1_in_USD = list(map(lambda x: x["open"], deserialized["Data"]["Data"]))[0]
+    spot_price_token_1_in_USD = list(map(lambda x: x["open"], deserialized["Data"]["Data"]))
+    spot_price_token_1_in_USD_start, spot_price_token_1_in_USD_end  = spot_price_token_1_in_USD[0], spot_price_token_1_in_USD[-1]
 
 
     stats = PriceStats(
         t0_to_t1_max_price=max(opening_prices_token0_to_token_1),
         t0_to_t1_min_price=min(opening_prices_token0_to_token_1),
         t0_to_t1_price_window_start=opening_prices_token0_to_token_1[0],
-        spot_price_window_start_token_0=spot_price_token_0_in_USD,
-        spot_price_window_start_token_1=spot_price_token_1_in_USD,
+        spot_price_window_start_token_0=spot_price_token_0_in_USD_start,
+        spot_price_window_start_token_1=spot_price_token_1_in_USD_start,
+        spot_price_window_end_token_0=spot_price_token_0_in_USD_end,
+        spot_price_window_end_token_1=spot_price_token_1_in_USD_end,
         window_start=window_start,
         window_end=window_end
     )

@@ -88,11 +88,6 @@ def read_from_file(base_token: str, quote_token: str) -> pd.DataFrame:
     return df
 
 
-def filter_by_time_window(df: pd.DataFrame, start_date: datetime, end_date: datetime):
-    result = df[(int(start_date.timestamp()) <= df["time"]) & (df["time"] <= int(end_date.timestamp()))]
-    return result
-
-
 if __name__ == "__main__":
     base_token = "ETH"
     # base_token = "BTC"
@@ -125,7 +120,7 @@ if __name__ == "__main__":
     min_error = (-1, -1, sys.maxsize * 2 + 1) # days_left, days_right, error itself
     for days_left_side in range(1, bruteforce_range_left):
         for days_right_side in range(1, bruteforce_range_right):
-            if days_left_side == 59 and days_right_side == 7:
+            # if days_left_side == 59 and days_right_side == 7:
                 realized_volatility_list = []
                 print(days_left_side, days_right_side)
                 current_error = 0
@@ -158,4 +153,4 @@ if __name__ == "__main__":
                     min_error = (days_left_side, days_right_side, current_error)
     
     print(min_error)
-    pprint(realized_volatility_list)
+    # pprint(realized_volatility_list)
