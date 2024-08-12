@@ -60,7 +60,7 @@ class PriceStats:
     #         f"-------------------------------------"
     #     )
 
-# TODO: fetch price more precisely using hourly API? 
+
 def fetch_price_statistics(token0_id: str, token1_id: str, window_start: datetime, window_end: datetime):
     window_start = window_start.replace(tzinfo=pytz.UTC)
     window_end = window_end.replace(tzinfo=pytz.UTC)
@@ -90,7 +90,7 @@ def fetch_price_statistics(token0_id: str, token1_id: str, window_start: datetim
         f"?fsym={token0_id}"
         f"&tsym={USD_CC_ID}"
         f"&toTs={int(window_start.timestamp())}"
-        f"&limit={1}"
+        f"&limit={(window_end - window_start).days}"
         f"&api_key={CRYPTOCOMPARE_API_KEY}"
     )
 
@@ -99,7 +99,7 @@ def fetch_price_statistics(token0_id: str, token1_id: str, window_start: datetim
         f"?fsym={token1_id}"
         f"&tsym={USD_CC_ID}"
         f"&toTs={int(window_start.timestamp())}"
-        f"&limit={1}"
+        f"&limit={(window_end - window_start).days}"
         f"&api_key={CRYPTOCOMPARE_API_KEY}"
     )
 

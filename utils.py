@@ -28,7 +28,7 @@ def format_dune_fee_query(raw_row):
     return processed_row
 
 def visualize_token_groups(fee_data, time_window: timedelta):
-    fig = plt.figure(figsize =(10, 7))
+    fig = plt.figure(figsize =(10, 10))
     i = 0
     for key, value in fee_data.items():
         plot = plt.scatter(
@@ -48,6 +48,7 @@ def visualize_token_groups(fee_data, time_window: timedelta):
     plt.ylabel("LP fees / Option price")
     plt.legend(handles=[profitability_line])
     plt.title(f"LP fees / Option price ({int(time_window.days / 7)} weeks period)")
+    plt.savefig(f"lp_fees_to_option_price_{time_window.days // 7}_weeks.pdf")
     plt.show()
     
 

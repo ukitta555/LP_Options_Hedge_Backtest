@@ -2,7 +2,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from pprint import pprint
 import sys
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt    
 import pandas as pd
 from dune_client.client import DuneClient
 from pathlib import Path
@@ -49,8 +49,6 @@ def calculate_realized_volatility(liquidity_provision_time: datetime, log_of_rat
         closest_hour_entry = buffer_size + i
         # print(f"Index of the entry used for calculating the volatility {closest_hour_entry}, entry itself: \n {log_of_ratios.loc[closest_hour_entry]}")
 
-
-        # pre-fill
         for idx in range(closest_hour_entry - days_left_side * 24, closest_hour_entry + days_right_side * 24):
             counter += 1
             window.append(log_of_ratios.loc[idx, "log"])
@@ -144,9 +142,9 @@ def find_datapoints_inside_window(
     formatted_fee_response, 
     window_start_date: datetime,
     window_end_date: datetime, 
-    ptr: int
+    # ptr: int = None
 ):
-
+    ptr = 0
     closest_to_beginning_of_window = None
     closest_to_end_of_window = None
 
@@ -250,7 +248,7 @@ def calculate_stats(
                 formatted_fee_0_response,
                 price_window_start, 
                 price_window_end, 
-                fee_0_results_ptr
+                # fee_0_results_ptr
             )
         
         # not mutually exclusive events (in my understanding rn, might be wrong)
@@ -261,7 +259,7 @@ def calculate_stats(
                 formatted_fee_1_response,
                 price_window_start,
                 price_window_end,
-                fee_1_results_ptr
+                # fee_1_results_ptr
             )
         
         # not mutually exclusive events (in my understanding rn, might be wrong)
@@ -276,6 +274,7 @@ def calculate_stats(
                 stats: PriceStats = fetch_price_statistics(ticker_0, ticker_1, price_window_start, price_window_end)
             except Exception:
                 print(f"Skipping window {price_window_start}-{price_window_end} since CC API returns a price of 0.")
+                price_window_start = price_window_start + timedelta(weeks=1)
                 continue
 
             stats.fee_0_diff_window = get_scaled_fee_diff(
@@ -298,7 +297,7 @@ def calculate_stats(
         else:
             print(f"Window {price_window_start} - {price_window_end} skipped since not all stats can be collected!")
 
-        price_window_start = price_window_end
+        price_window_start = price_window_start + timedelta(weeks=1)
 
         
     # print("-------------------------------")
@@ -310,7 +309,7 @@ if __name__ == "__main__":
     fees_to_liquidity: dict[timedelta, dict[str, list[float]]] = dict()
     fees_to_option_price: dict[timedelta, dict[str, list[float]]] = dict()
     for window_period in [
-        # timedelta(weeks=4),
+        timedelta(weeks=4),
         timedelta(weeks=6),
         timedelta(weeks=8),
     ]:
@@ -494,6 +493,3 @@ if __name__ == "__main__":
         for key in fees_to_option_price[window_period].keys():
             print(key)
             print([float(x) for x in fees_to_option_price[window_period][key]])
-    
-
-                    
