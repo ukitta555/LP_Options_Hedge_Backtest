@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 import pytz
 import requests
 
-from consts import CRYPTOCOMPARE_API_KEY
+#from consts import CRYPTOCOMPARE_API_KEY
 
 
 def format_cached_dune_response(raw_row):
@@ -28,7 +28,7 @@ def format_dune_fee_query(raw_row):
     return processed_row
 
 def visualize_token_groups(fee_data, time_window: timedelta):
-    fig = plt.figure(figsize =(10, 10))
+    fig = plt.figure(figsize =(10, 8))
     i = 0
     for key, value in fee_data.items():
         plot = plt.scatter(
@@ -41,14 +41,16 @@ def visualize_token_groups(fee_data, time_window: timedelta):
         i += 1
 
     plt.xticks([_ for _ in range(len(fee_data))], fee_data.keys())
-    plt.xticks(rotation=45) 
+    plt.xticks(rotation=45, size=12) 
+    plt.yticks(size=15)
     plt.subplots_adjust(bottom=0.16)
     
-    profitability_line = plt.axhline(y=1, color='r', linestyle='--', label='Profitability threshold')
-    plt.ylabel("LP fees / Option price")
-    plt.legend(handles=[profitability_line])
-    plt.title(f"LP fees / Option price ({int(time_window.days / 7)} weeks period)")
-    plt.savefig(f"lp_fees_to_option_price_{time_window.days // 7}_weeks.pdf")
+    profitability_line = plt.axhline(y=1, color='r', linestyle='--', label='Profitability threshold', linewidth=2)
+    plt.ylabel("LP fees / Option price", size=22)
+    plt.xlabel("Token pair", size=22)
+    plt.legend(handles=[profitability_line], fontsize=22)
+    #plt.title(f"LP fees / Option price ({int(time_window.days / 7)} weeks period)")
+    plt.savefig(f"lp_fees_to_option_price_{time_window.days // 7}_weeks.pdf", bbox_inches='tight')
     plt.show()
     
 
